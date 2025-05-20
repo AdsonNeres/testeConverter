@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Importar 2 Planilhas - Agrupado por Agente</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 20px;
+      background-color: #f8f9fa;
+      color: #333;
+    }
+
+    #container {
+      max-width: 800px;
+      margin: auto;
+      padding: 20px;
+      background-color: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    h2, h3 {
+      color: #e57a16;
+    }
+
+    input[type="file"] {
+      margin: 5px 0;
+    }
+
+    button {
+      padding: 10px 15px;
+      background-color: #e57a16;
+      color: black;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 10px 15px;
+      text-align: left;
+    }
+
+    tr:nth-child(even) {
+      background-color: #f4f6f8;
+    }
+
+    th {
+      background-color: #007BFF;
+      color: #ffffff;
+      font-weight: 600;
+    }
+
+    td:empty {
+      background-color: #fdfdfd;
+    }
+
+    tr:hover td {
+      background-color: #e9f1ff;
+    }
+
+    @media (max-width: 768px) {
+      table, th, td {
+        font-size: 12px;
+      }
+
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+  <h2>Processar Dados Motoristas</h2>
+  <label for="file1">Arquivo com códigos: <br>
+  <input type="file" id="file1" accept=".xlsx, .xls" /></label> <br> <br>
+
+  <label for="file2">Arquivo com ID-Rotas <br>
+  <input type="file" id="file2" accept=".xlsx, .xls" />
+  <br><br>
+  <button onclick="processar()">Processar e Exportar</button>
+  </div>
+  <div id="resultado"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    let dadosPlanilha1 = [];
+    let agentesNumeros = {};
+
+    function lerArquivo(input, callback) {
+      const file = input.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        callback(rows);
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function processar() {
+      lerArquivo(document.getElementById("file1"), (rows1) => {
+        let agente = "", servico = "", veiculo = "", inicio = "", coletando = false;
+        dadosPlanilha1 = [];
+
+        for (let i = 0; i < rows1.length; i++) {
+          const linha = rows1[i];
+          const colA = linha[0]?.toString().trim();
+          const colB = linha[1]?.toString().trim();
+          const colG = linha[6]?.toString().trim();
+
+          if (colA === "Agente:") agente = colB;
+          else if (colA === "Serviços:") servico = colB;
+          else if (colA === "Veículo:") veiculo = colB;
+          else if (colA === "Início:") {
+            inicio = colB;
+            coletando = true;
+          } else if (coletando && colG) {
+            dadosPlanilha1.push({
+              agente, servico, veiculo, inicio, codigo: colG
+            });
+          }
+        }
+
+        lerArquivo(document.getElementById("file2"), (rows2) => {
+          agentesNumeros = {};
+          for (let i = 0; i < rows2.length; i++) {
+            const linha = rows2[i];
+            const numero = linha[0]?.toString().trim();
+            const agenteNome = linha[7]?.toString().trim();
+            if (agenteNome && numero) {
+              agentesNumeros[agenteNome.toLowerCase()] = numero;
+            }
+          }
+
+          const grupos = {};
+          dadosPlanilha1.forEach((item) => {
+            const key = item.agente;
+            if (!grupos[key]) grupos[key] = { ...item, codigos: [] };
+            grupos[key].codigos.push(item.codigo);
+          });
+
+          const resultado = [["#", "Agente", "Serviços", "Veículo", "Início", "Código"]];
+          let html = "<h3>Resultado:</h3>";
+
+          for (const agente in grupos) {
+            const grupo = grupos[agente];
+            const numero = agentesNumeros[agente.toLowerCase()] || "";
+
+            resultado.push([numero, grupo.agente, grupo.servico, grupo.veiculo, grupo.inicio, grupo.codigos[0]]);
+            html += `<table><thead><tr>
+                      <th>#</th><th>Agente</th><th>Serviços</th><th>Veículo</th><th>Início</th><th>Código</th>
+                    </tr></thead><tbody>`;
+            html += `<tr>
+              <td>${numero}</td>
+              <td>${grupo.agente}</td>
+              <td>${grupo.servico}</td>
+              <td>${grupo.veiculo}</td>
+              <td>${grupo.inicio}</td>
+              <td>${grupo.codigos[0]}</td>
+            </tr>`;
+
+            for (let i = 1; i < grupo.codigos.length; i++) {
+              resultado.push(["", "", "", "", "", grupo.codigos[i]]);
+              html += `<tr><td></td><td></td><td></td><td></td><td></td><td>${grupo.codigos[i]}</td></tr>`;
+            }
+
+            html += "</tbody></table>";
+          }
+
+          document.getElementById("resultado").innerHTML = html;
+
+          const novaPlanilha = XLSX.utils.aoa_to_sheet(resultado);
+          const novoArquivo = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(novoArquivo, novaPlanilha, "Resultado");
+          XLSX.writeFile(novoArquivo, "resultado_por_agente.xlsx");
+        });
+      });
+    }
+  </script>
+</body>
+</html>
