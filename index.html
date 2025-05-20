@@ -103,7 +103,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
  <script>
   let dadosPlanilha1 = [];
-  let agentesNumeros = {};
+  let agentesServicosNumeros = {};
 
   function lerArquivo(input, callback) {
     const file = input.files[0];
@@ -144,41 +144,35 @@
         }
       }
 
+      // Segunda planilha
       lerArquivo(document.getElementById("file2"), (rows2) => {
-        agentesNumeros = {};
+        agentesServicosNumeros = {};
         for (let i = 0; i < rows2.length; i++) {
           const linha = rows2[i];
-          const numero = linha[0]?.toString().trim();
-          const agenteNome = linha[7]?.toString().trim();
-          if (agenteNome && numero) {
-            agentesNumeros[agenteNome.toLowerCase()] = numero;
+          const numero = linha[0]?.toString().trim();       // Coluna A - #
+          const agenteNome = linha[7]?.toString().trim();   // Coluna H - Agente
+          const servicoPrevisto = linha[26]?.toString().trim(); // Coluna AA - Serviços - Previsto
+          if (agenteNome && servicoPrevisto && numero) {
+            const chave = (agenteNome + "||" + servicoPrevisto).toLowerCase();
+            agentesServicosNumeros[chave] = numero;
           }
         }
 
-        const grupos = [];
-        let atual = null;
-
-        dadosPlanilha1.forEach((item, i) => {
-          const chaveAtual = `${item.agente}|${item.servico}|${item.veiculo}|${item.inicio}`;
-          if (!atual || atual.chave !== chaveAtual) {
-            atual = {
-              chave: chaveAtual,
-              agente: item.agente,
-              servico: item.servico,
-              veiculo: item.veiculo,
-              inicio: item.inicio,
-              codigos: []
-            };
-            grupos.push(atual);
-          }
-          atual.codigos.push(item.codigo);
+        // Agrupamento e comparação
+        const grupos = {};
+        dadosPlanilha1.forEach((item) => {
+          const chave = item.agente + "||" + item.servico;
+          if (!grupos[chave]) grupos[chave] = { ...item, codigos: [] };
+          grupos[chave].codigos.push(item.codigo);
         });
 
         const resultado = [["#", "Agente", "Serviços", "Veículo", "Início", "Código"]];
         let html = "<h3>Resultado:</h3>";
 
-        grupos.forEach(grupo => {
-          const numero = agentesNumeros[grupo.agente.toLowerCase()] || "";
+        for (const chave in grupos) {
+          const grupo = grupos[chave];
+          const chaveBusca = (grupo.agente + "||" + grupo.servico).toLowerCase();
+          const numero = agentesServicosNumeros[chaveBusca] || "";
 
           resultado.push([numero, grupo.agente, grupo.servico, grupo.veiculo, grupo.inicio, grupo.codigos[0]]);
           html += `<table><thead><tr>
@@ -199,14 +193,14 @@
           }
 
           html += "</tbody></table>";
-        });
+        }
 
         document.getElementById("resultado").innerHTML = html;
 
         const novaPlanilha = XLSX.utils.aoa_to_sheet(resultado);
         const novoArquivo = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(novoArquivo, novaPlanilha, "Resultado");
-        XLSX.writeFile(novoArquivo, "resultado_por_agente.xlsx");
+        XLSX.writeFile(novoArquivo, "Agentes_serviços.xlsx");
       });
     });
   }
